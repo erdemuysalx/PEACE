@@ -1,8 +1,9 @@
 """
 DroneTools — deterministic executor for ToolCall steps produced by the LLM planner.
 
-All MAVROS infrastructure lives here: publisher, service clients, setpoint streaming.
-The node object is injected so this class never calls rclpy directly.
+Navigation commands publish to /goal_pose for the external path-planning /
+obstacle-avoidance stack.  MAVROS arming, mode-switch and landing services
+are retained so the LLM agent can still manage flight-mode transitions.
 """
 
 import math
@@ -19,53 +20,50 @@ from std_msgs.msg import Header
 
 from robot_agent.exceptions import SafetyViolationError, VehicleError
 
-# Setpoint streaming constants
-_STREAM_RATE: float = 10.0          # Hz
-_OFFBOARD_PRESTREAM_DELAY: float = 0.3  # seconds (PX4 requirement)
 _SCAN_SETTLE_TIME: float = 1.5      # seconds to settle at each scan yaw step
-_SCAN_STEPS: int = 8                # 360° / 45° per step
+_SCAN_STEPS: int = 8                # 360 / 45 per step
 
 
 class DroneTools:
     """
-    Owns all MAVROS infrastructure and exposes high-level tool methods.
+    Owns the /goal_pose publisher and MAVROS service clients.
+
+    Navigation methods publish a single PoseStamped to /goal_pose so the
+    external nav stack (global planner + obstacle avoidance) can execute
+    the trajectory.  Arming, mode-switch, takeoff, and landing are handled
+    via MAVROS services directly.
 
     Each tool method returns a descriptive string (success or failure reason).
-    When ACTION_ENABLE_CONTROL=False all control methods return immediately with
-    a descriptive message and never call any MAVROS service.
+    When ACTION_ENABLE_CONTROL=False all control methods return immediately
+    with a descriptive message and never call any service.
     """
 
     def __init__(self, node, ego_state_svc, world_model_svc, safety_svc, settings) -> None:
-        """Inject dependencies and create the MAVROS publisher and service clients."""
+        """Inject dependencies and create the goal-pose publisher and MAVROS service clients."""
         self._node = node
         self._ego_state_svc = ego_state_svc
         self._world_model_svc = world_model_svc
         self._safety_svc = safety_svc
         self._settings = settings
 
-        # ── Execution state ────────────────────────────────────────────────────
+        # -- Execution state -------------------------------------------------------
         self._lock = threading.RLock()
         self._current_state: Optional[State] = None
 
-        # ── Setpoint streaming ─────────────────────────────────────────────────
-        self._stream_thread: Optional[threading.Thread] = None
-        self._stream_stop = threading.Event()
-        self._stream_target: Optional[dict] = None
-
-        best_effort_qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
+        reliable_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
         reentrant_cb = ReentrantCallbackGroup()
 
-        # ── Publisher ──────────────────────────────────────────────────────────
-        self._position_pub = node.create_publisher(
-            PoseStamped, "/mavros/setpoint_position/local", best_effort_qos
+        # -- Goal-pose publisher (consumed by the external nav stack) ---------------
+        self._goal_pub = node.create_publisher(
+            PoseStamped, "/goal_pose", reliable_qos
         )
 
-        # ── Service clients ────────────────────────────────────────────────────
+        # -- MAVROS service clients ------------------------------------------------
         self._set_mode_client = node.create_client(
             SetMode, "/mavros/set_mode", callback_group=reentrant_cb
         )
@@ -79,7 +77,7 @@ class DroneTools:
             CommandTOL, "/mavros/cmd/land", callback_group=reentrant_cb
         )
 
-    # ── Public tool methods ────────────────────────────────────────────────────
+    # -- Public tool methods -------------------------------------------------------
 
     def forward(self, dist: float = 0.5) -> str:
         """Move forward dist metres relative to current body heading."""
@@ -111,7 +109,6 @@ class DroneTools:
             return "Control disabled (ACTION_ENABLE_CONTROL=False)"
         ego = self._ego_state_svc.get_ego_state()
         yaw_rad = math.radians(ego.orientation_yaw)
-        # left is negative y in body frame → subtract sin/cos components
         dx = -math.sin(yaw_rad) * dist
         dy = math.cos(yaw_rad) * dist
         tx, ty, tz = ego.position_x + dx, ego.position_y + dy, ego.position_z
@@ -158,19 +155,17 @@ class DroneTools:
         start_yaw_deg = ego.orientation_yaw
         pos_x, pos_y, pos_z = ego.position_x, ego.position_y, ego.position_z
 
-        self._start_position_stream(pos_x, pos_y, pos_z, math.radians(start_yaw_deg))
-        time.sleep(_OFFBOARD_PRESTREAM_DELAY)
-        self._ensure_offboard_and_armed()
+        self._ensure_offboard()
 
         num_steps = max(1, round(abs(degrees) / _SCAN_STEPS))
         step_deg = degrees / num_steps
         for i in range(1, num_steps + 1):
             yaw_deg = start_yaw_deg + i * step_deg
-            self._start_position_stream(pos_x, pos_y, pos_z, math.radians(yaw_deg))
+            self._publish_goal_pose(pos_x, pos_y, pos_z, math.radians(yaw_deg))
             time.sleep(_SCAN_SETTLE_TIME)
 
         ego_after = self._ego_state_svc.get_ego_state()
-        return f"Rotated {degrees:+.0f}°. Yaw={ego_after.orientation_yaw:.0f}°"
+        return f"Rotated {degrees:+.0f}. Yaw={ego_after.orientation_yaw:.0f}"
 
     def waypoint(
         self,
@@ -243,7 +238,7 @@ class DroneTools:
         y: Optional[float] = None,
         z: Optional[float] = None,
     ) -> str:
-        """Rotate in 45° yaw steps until target_label appears in detections."""
+        """Rotate in 45-degree yaw steps until target_label appears in detections."""
         if not self._settings.action_enable_control:
             return "Control disabled (ACTION_ENABLE_CONTROL=False)"
         ego = self._ego_state_svc.get_ego_state()
@@ -253,27 +248,20 @@ class DroneTools:
         start_yaw_deg = ego.orientation_yaw
         step_deg = 360.0 / _SCAN_STEPS
 
-        self._node.get_logger().info(f"Scanning for '{label}' ({_SCAN_STEPS} steps, {step_deg}° each)")
-
-        with self._lock:
-            current_mode = self._current_state.mode if self._current_state else None
-        if current_mode != "OFFBOARD":
-            self._start_position_stream(
-                hold_x, hold_y, hold_z, math.radians(start_yaw_deg)
-            )
-            time.sleep(_OFFBOARD_PRESTREAM_DELAY)
-            if not self._set_mode("OFFBOARD"):
-                return "ERROR: Failed to switch to OFFBOARD mode for scan"
+        self._node.get_logger().info(
+            f"Scanning for '{label}' ({_SCAN_STEPS} steps, {step_deg} each)"
+        )
+        self._ensure_offboard()
 
         for i in range(_SCAN_STEPS):
             yaw_deg = start_yaw_deg + i * step_deg
             yaw_rad = math.radians(yaw_deg)
-            self._start_position_stream(hold_x, hold_y, hold_z, yaw_rad)
+            self._publish_goal_pose(hold_x, hold_y, hold_z, yaw_rad)
             time.sleep(_SCAN_SETTLE_TIME)
 
             detections = self._world_model_svc.get_world_model().detections
             self._node.get_logger().info(
-                f"Scan step {i + 1}/{_SCAN_STEPS}: yaw={yaw_deg:.0f}°, "
+                f"Scan step {i + 1}/{_SCAN_STEPS}: yaw={yaw_deg:.0f}, "
                 f"detections: {[d['label'] for d in detections]}"
             )
             found = next((d for d in detections if d["label"] == label), None)
@@ -283,22 +271,22 @@ class DroneTools:
                 )
                 bearing_deg = math.degrees(bearing_rad)
                 self._node.get_logger().info(
-                    f"Found '{label}' at scan yaw={yaw_deg:.0f}°, "
+                    f"Found '{label}' at scan yaw={yaw_deg:.0f}, "
                     f"world=({found['world_x']:.1f},{found['world_y']:.1f}), "
-                    f"rotating to bearing={bearing_deg:.0f}°"
+                    f"rotating to bearing={bearing_deg:.0f}"
                 )
-                self._start_position_stream(hold_x, hold_y, hold_z, bearing_rad)
+                self._publish_goal_pose(hold_x, hold_y, hold_z, bearing_rad)
                 time.sleep(_SCAN_SETTLE_TIME)
-                return f"Found '{label}' at yaw={bearing_deg:.0f}°"
+                return f"Found '{label}' at yaw={bearing_deg:.0f}"
 
-        self._node.get_logger().warning(f"'{label}' not found after full 360° scan")
-        return f"'{label}' not found after full 360° scan"
+        self._node.get_logger().warning(f"'{label}' not found after full 360 scan")
+        return f"'{label}' not found after full 360 scan"
 
     def arm(self) -> str:
         """Arm the drone motors."""
         if not self._settings.action_enable_control:
             return "Control disabled (ACTION_ENABLE_CONTROL=False)"
-        if not self._set_arm(True):
+        if not self._call_arming_service(True):
             return "ERROR: Arming failed"
         return "Armed successfully"
 
@@ -306,7 +294,7 @@ class DroneTools:
         """Disarm the drone motors."""
         if not self._settings.action_enable_control:
             return "Control disabled (ACTION_ENABLE_CONTROL=False)"
-        if not self._set_arm(False):
+        if not self._call_arming_service(False):
             return "ERROR: Disarming failed"
         return "Disarmed successfully"
 
@@ -319,16 +307,16 @@ class DroneTools:
         target_z = max(self._settings.action_min_altitude,
                        min(self._settings.action_max_altitude, height))
 
-        # PX4 sequence: stream setpoints first, then OFFBOARD, then arm
-        self._start_position_stream(ego.position_x, ego.position_y, target_z,
-                                    math.radians(ego.orientation_yaw))
-        time.sleep(_OFFBOARD_PRESTREAM_DELAY)
+        self._publish_goal_pose(
+            ego.position_x, ego.position_y, target_z,
+            math.radians(ego.orientation_yaw),
+        )
 
         if not self._set_mode("OFFBOARD"):
             return "ERROR: Failed to switch to OFFBOARD mode for takeoff"
 
         if not ego.armed:
-            if not self._set_arm(True):
+            if not self._call_arming_service(True):
                 return "ERROR: Arming failed before takeoff"
 
         arrived = self._wait_for_arrival(
@@ -351,7 +339,6 @@ class DroneTools:
         land_y = y if y is not None else ego.position_y
 
         if land_x != ego.position_x or land_y != ego.position_y:
-            # Navigate to landing position first
             self._navigate_to_waypoint(
                 land_x, land_y, ego.position_z,
                 math.radians(ego.orientation_yaw),
@@ -361,18 +348,15 @@ class DroneTools:
 
         if not self._set_mode("AUTO.LAND"):
             return "ERROR: Failed to set AUTO.LAND mode"
-        self._stop_stream()
         return f"Landing initiated at ({land_x:.1f},{land_y:.1f})"
 
     def stop_safely(self) -> None:
-        """Switch to AUTO.LOITER if in OFFBOARD, then stop setpoint stream."""
+        """Switch to AUTO.LOITER if currently in OFFBOARD mode."""
         with self._lock:
             in_offboard = self._current_state and self._current_state.mode == "OFFBOARD"
         if in_offboard:
-            self._node.get_logger().info("Switching to AUTO.LOITER before stopping setpoints")
+            self._node.get_logger().info("Switching to AUTO.LOITER")
             self._set_mode("AUTO.LOITER", timeout=5.0)
-            time.sleep(0.5)
-        self._stop_stream()
 
     def execute(self, tool_name: str, arguments: dict) -> str:
         """Dispatch a tool call by name with the given arguments dict."""
@@ -402,14 +386,14 @@ class DroneTools:
         except Exception as e:
             return f"ERROR: '{tool_name}' raised {type(e).__name__}: {e}"
 
-    # ── State callback — called by AgentNode to keep DroneTools in sync ───────
+    # -- State callback (called by AgentNode to keep DroneTools in sync) -----------
 
     def update_state(self, state: State) -> None:
         """Update the cached MAVROS state (called from AgentNode._state_cb)."""
         with self._lock:
             self._current_state = state
 
-    # ── Internal navigation helpers ───────────────────────────────────────────
+    # -- Internal navigation helpers -----------------------------------------------
 
     def _navigate_to_waypoint(
         self,
@@ -420,31 +404,29 @@ class DroneTools:
         tolerance: float,
         label: str,
     ) -> str:
-        """Stream setpoints, engage OFFBOARD, wait for arrival. Returns result string."""
-        # Safety validation — clamp altitude, reject geofence violations
+        """Publish goal pose, ensure OFFBOARD, wait for arrival. Returns result string."""
         z = self._safety_svc.clamp_altitude(z)
         try:
             self._safety_svc.validate_position(x, y, z)
         except SafetyViolationError as e:
             return f"ERROR: Safety violation — {e}"
 
-        self._start_position_stream(x, y, z, yaw_rad)
-        # PX4 requires setpoints to be streaming for ≥0.3s before switching to OFFBOARD
-        time.sleep(_OFFBOARD_PRESTREAM_DELAY)
-        self._ensure_offboard_and_armed()
+        self._publish_goal_pose(x, y, z, yaw_rad)
+        self._ensure_offboard()
+
         arrived = self._wait_for_arrival(
             x, y, z, tolerance=tolerance, timeout=self._settings.action_command_timeout
         )
         ego = self._ego_state_svc.get_ego_state()
         pos_str = (
             f"Position: ({ego.position_x:.1f},{ego.position_y:.1f},{ego.position_z:.1f})m, "
-            f"yaw={ego.orientation_yaw:.0f}°, alt={ego.position_z:.1f}m"
+            f"yaw={ego.orientation_yaw:.0f}, alt={ego.position_z:.1f}m"
         )
         if arrived:
             return f"{label}. {pos_str}"
         return f"{label} (arrival timeout). {pos_str}"
 
-    def _ensure_offboard_and_armed(self) -> None:
+    def _ensure_offboard(self) -> None:
         """Switch to OFFBOARD mode if not already there."""
         with self._lock:
             current_mode = self._current_state.mode if self._current_state else None
@@ -469,43 +451,10 @@ class DroneTools:
             time.sleep(0.2)
         return False
 
-    # ── Setpoint streaming ────────────────────────────────────────────────────
+    # -- Goal-pose publisher -------------------------------------------------------
 
-    def _start_position_stream(self, x: float, y: float, z: float, yaw: float) -> None:
-        """Start (or restart) the daemon thread streaming PoseStamped at 10 Hz."""
-        self._stop_stream()
-        with self._lock:
-            self._stream_target = {"x": x, "y": y, "z": z, "yaw": yaw}
-        self._stream_stop.clear()
-        self._stream_thread = threading.Thread(target=self._stream_worker, daemon=True)
-        self._stream_thread.start()
-        self._node.get_logger().info(
-            f"Setpoint stream started: ({x:.2f},{y:.2f},{z:.2f}), yaw={math.degrees(yaw):.1f}°"
-        )
-
-    def _stop_stream(self) -> None:
-        """Signal the stream thread to stop and join it."""
-        if self._stream_thread and self._stream_thread.is_alive():
-            self._stream_stop.set()
-            self._stream_thread.join(timeout=2.0)
-            self._node.get_logger().info("Setpoint stream stopped")
-
-    def _stream_worker(self) -> None:
-        """Daemon thread: publish PoseStamped at action_setpoint_stream_rate Hz."""
-        period = 1.0 / self._settings.action_setpoint_stream_rate
-        while not self._stream_stop.is_set():
-            tick = time.time()
-            with self._lock:
-                target = self._stream_target
-            if target:
-                self._publish_setpoint(target["x"], target["y"], target["z"], target["yaw"])
-            elapsed = time.time() - tick
-            remaining = period - elapsed
-            if remaining > 0:
-                time.sleep(remaining)
-
-    def _publish_setpoint(self, x: float, y: float, z: float, yaw: float) -> None:
-        """Build and publish a single PoseStamped message to MAVROS."""
+    def _publish_goal_pose(self, x: float, y: float, z: float, yaw_rad: float) -> None:
+        """Build and publish a single PoseStamped to /goal_pose."""
         msg = PoseStamped()
         msg.header = Header()
         msg.header.stamp = self._node.get_clock().now().to_msg()
@@ -514,12 +463,16 @@ class DroneTools:
         msg.pose.orientation = Quaternion(
             x=0.0,
             y=0.0,
-            z=math.sin(yaw / 2.0),
-            w=math.cos(yaw / 2.0),
+            z=math.sin(yaw_rad / 2.0),
+            w=math.cos(yaw_rad / 2.0),
         )
-        self._position_pub.publish(msg)
+        self._goal_pub.publish(msg)
+        self._node.get_logger().debug(
+            f"Published goal pose: ({x:.2f},{y:.2f},{z:.2f}), "
+            f"yaw={math.degrees(yaw_rad):.1f}"
+        )
 
-    # ── MAVROS service helpers ────────────────────────────────────────────────
+    # -- MAVROS service helpers ----------------------------------------------------
 
     def _set_mode(self, mode: str, timeout: float = 5.0) -> bool:
         """Call the MAVROS set_mode service and return True on success."""
@@ -541,7 +494,7 @@ class DroneTools:
         self._node.get_logger().error(f"Failed to set mode to {mode}")
         return False
 
-    def _set_arm(self, arm: bool, timeout: float = 5.0) -> bool:
+    def _call_arming_service(self, arm: bool, timeout: float = 5.0) -> bool:
         """Call the MAVROS arming service and return True on success."""
         if not self._arming_client.wait_for_service(timeout_sec=timeout):
             self._node.get_logger().error("Arming service unavailable")
