@@ -257,22 +257,23 @@ class AgentNode(Node):
         """Accept an incoming query and dispatch it to the worker pool if idle.
 
         The query payload may be either a plain string (free-form CLI prompt) or
-        a JSON object {"query": str, "prompt_id": str, "task_category": str} for
-        evaluation runs sourced from evaluation/prompts.json.
+        a JSON object ``{"query": str, "metadata": {...}}``. The ``metadata``
+        dict is passed opaquely through to the mission logger; the agent core
+        never inspects its contents.
         """
         raw = msg.data.strip()
         if not raw:
             return
 
-        prompt_id = ""
-        task_category = ""
+        metadata: dict[str, str] = {}
         query = raw
         try:
             payload = json.loads(raw)
             if isinstance(payload, dict) and "query" in payload:
                 query = str(payload.get("query", "")).strip()
-                prompt_id = str(payload.get("prompt_id", "") or "")
-                task_category = str(payload.get("task_category", "") or "")
+                meta = payload.get("metadata") or {}
+                if isinstance(meta, dict):
+                    metadata = {str(k): str(v) for k, v in meta.items()}
         except (ValueError, TypeError):
             pass
         if not query:
@@ -288,14 +289,15 @@ class AgentNode(Node):
             self._inference_running = True
 
         self.get_logger().info(f"Query: {query}")
-        self._worker_pool.submit(self._process_query, query, prompt_id, task_category)
+        self._worker_pool.submit(self._process_query, query, metadata)
 
     # ── Planner-executor pattern ────────────────────────────────────────────────
 
     def _process_query(
-        self, user_query: str, prompt_id: str = "", task_category: str = ""
+        self, user_query: str, metadata: Optional[dict[str, str]] = None
     ) -> None:
         """Call the LLM to produce a MissionPlan, then hand off to _execute_plan."""
+        metadata = metadata or {}
         mission_id = ""
         ego_state = None
         world_model = None
@@ -324,7 +326,7 @@ class AgentNode(Node):
                 self._publish_execution_status(mission_id, "failed", "LLM returned empty plan")
                 self.mission_logger.log_mission(
                     mission_id, user_query, "", [], "failed", ego_state, world_model,
-                    prompt_id=prompt_id, task_category=task_category,
+                    metadata=metadata,
                     final_ego_state=self.ego_state_svc.get_ego_state(),
                     started_at=started_at, duration_s=time.time() - started_at,
                     replan_count=0, model=model_name,
@@ -347,14 +349,14 @@ class AgentNode(Node):
                 self._inference_running = False
             self._worker_pool.submit(
                 self._execute_plan, plan, ego_state, world_model,
-                0, prompt_id, task_category, started_at, model_name,
+                0, metadata, started_at, model_name,
             )
         except InferenceError as e:
             self.get_logger().error(f"LLM inference failed: {e}")
             self._publish_execution_status("", "failed", str(e))
             self.mission_logger.log_mission(
                 mission_id, user_query, "", [], "failed", ego_state, world_model,
-                prompt_id=prompt_id, task_category=task_category,
+                metadata=metadata,
                 final_ego_state=self.ego_state_svc.get_ego_state(),
                 started_at=started_at, duration_s=time.time() - started_at,
                 replan_count=0, model=model_name,
@@ -366,7 +368,7 @@ class AgentNode(Node):
             self._publish_execution_status("", "failed", str(e))
             self.mission_logger.log_mission(
                 mission_id, user_query, "", [], "failed", ego_state, world_model,
-                prompt_id=prompt_id, task_category=task_category,
+                metadata=metadata,
                 final_ego_state=self.ego_state_svc.get_ego_state(),
                 started_at=started_at, duration_s=time.time() - started_at,
                 replan_count=0, model=model_name,
@@ -382,12 +384,12 @@ class AgentNode(Node):
         ego_state: RobotState,
         world_model: WorldModel,
         replan_depth: int = 0,
-        prompt_id: str = "",
-        task_category: str = "",
+        metadata: Optional[dict[str, str]] = None,
         started_at: float = 0.0,
         model_name: str = "",
     ) -> None:
         """Execute plan steps sequentially, triggering a replan on step failure if allowed."""
+        metadata = metadata or {}
         mission_id = plan.mission_id
         steps = list(plan.steps)
         completed: list[ToolCall] = []
@@ -412,7 +414,7 @@ class AgentNode(Node):
                             final_state = "replanning"
                             self._execute_plan(
                                 new_plan, ego_state, world_model, replan_depth + 1,
-                                prompt_id, task_category, started_at, model_name,
+                                metadata, started_at, model_name,
                             )
                             return
                     self._publish_execution_status(mission_id, "failed", result)
@@ -432,7 +434,7 @@ class AgentNode(Node):
                 self.mission_logger.log_mission(
                     mission_id, plan.user_query or "", plan.reasoning,
                     executed_steps, final_state, ego_state, world_model,
-                    prompt_id=prompt_id, task_category=task_category,
+                    metadata=metadata,
                     final_ego_state=final_ego,
                     started_at=started_at,
                     duration_s=(time.time() - started_at) if started_at else 0.0,

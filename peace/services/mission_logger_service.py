@@ -16,9 +16,8 @@ from peace.schemas import RobotState, WorldModel
 
 _COLUMNS = [
     "mission_id",
-    "prompt_id",
     "query",
-    "task_category",
+    "metadata_json",
     "world_model_json",
     "robot_state_json",
     "final_robot_state_json",
@@ -70,23 +69,26 @@ class MissionLoggerService:
         final_state: str,
         ego_state: Optional[RobotState],
         world_model: Optional[WorldModel],
-        prompt_id: str = "",
-        task_category: str = "",
+        metadata: Optional[dict[str, str]] = None,
         final_ego_state: Optional[RobotState] = None,
         started_at: float = 0.0,
         duration_s: float = 0.0,
         replan_count: int = 0,
         model: str = "",
     ) -> None:
-        """Log the complete outcome of a mission as a single row."""
+        """Log the complete outcome of a mission as a single row.
+
+        ``metadata`` is opaque to the agent — callers (e.g. an evaluation
+        harness) populate it freely with whatever tags they want preserved on
+        the row (prompt_id, task_category, run_id, dataset_version, ...).
+        """
         if not self._enabled or self._writer is None:
             return
 
         row = {
             "mission_id": mission_id,
-            "prompt_id": prompt_id,
             "query": query,
-            "task_category": task_category,
+            "metadata_json": json.dumps(metadata or {}),
             "world_model_json": world_model.model_dump_json() if world_model else "",
             "robot_state_json": ego_state.model_dump_json() if ego_state else "",
             "final_robot_state_json": final_ego_state.model_dump_json() if final_ego_state else "",

@@ -138,3 +138,16 @@ peace-cli "takeoff to 10 meters and hold position"
 ```
 
 Add `--monitor` to keep the terminal open and watch execution status after the query is sent.
+
+## Evaluation
+
+A reference batch runner lives at [`evaluation/run_dataset.py`](evaluation/run_dataset.py). It drives PEACE through a dataset of pre-defined prompts and writes one CSV row per mission via the agent's `MissionLoggerService`. The default dataset is the public HuggingFace repo [erdemuysalx/uav-mission-prompts](https://huggingface.co/datasets/erdemuysalx/uav-mission-prompts).
+
+```bash
+uv pip install -e '.[eval]'   # adds the optional `datasets` dependency
+peace-vision
+peace-planner-executor
+python -m evaluation.run_dataset --limit 5
+```
+
+This script is not the canonical way to use PEACE — it is a worked example of how to publish queries onto `/agent/query` programmatically. Each row's `id` and `category` ride along inside the agent's opaque `metadata` field, end up serialised in the CSV's `metadata_json` column, and can be joined back to the dataset for scoring.

@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 import time
+from typing import Optional
 
 import rclpy
 from rclpy.node import Node
@@ -121,12 +122,14 @@ class AgentCLI(Node):
             self.get_logger().debug(f"Failed to parse status: {e}")
 
     def send_query(
-        self, query: str, prompt_id: str = "", task_category: str = ""
+        self, query: str, metadata: Optional[dict[str, str]] = None
     ) -> bool:
         """Publish a query to the agent and reset mission state.
 
-        When prompt_id or task_category are provided, the message is sent as a
-        JSON envelope so the planner-executor can tag the corresponding log row.
+        When ``metadata`` is non-empty the message is sent as a JSON envelope
+        so callers (e.g. an evaluation harness) can attach arbitrary tags that
+        the mission logger writes opaquely. The agent itself never inspects
+        the metadata contents.
         """
         if not query.strip():
             _console.print("[red]Query cannot be empty[/red]")
@@ -140,10 +143,8 @@ class AgentCLI(Node):
         self._current_index = 0
         self._total = 0
         msg = String()
-        if prompt_id or task_category:
-            msg.data = json.dumps(
-                {"query": query, "prompt_id": prompt_id, "task_category": task_category}
-            )
+        if metadata:
+            msg.data = json.dumps({"query": query, "metadata": metadata})
         else:
             msg.data = query
         self._query_pub.publish(msg)
