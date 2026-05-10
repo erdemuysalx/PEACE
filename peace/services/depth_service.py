@@ -3,7 +3,7 @@
 import math
 import numpy as np
 
-from robot_agent.schemas import Object, ObjectWithDepth
+from peace.schemas import Object, ObjectWithDepth
 
 
 class DepthProjectionService:

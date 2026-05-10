@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "robot_agent"
+name = "peace"
 version = "0.2.0"
-description = "AI agent for robot control"
+description = "PEACE: A Planner-Executor Agent with Constraint Enforcement"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 license = {text = "MIT"}
@@ -44,17 +44,17 @@ dev = [
 ]
 
 [project.scripts]
-robot-agent-planner-executor = "robot_agent.nodes.planner_executor:main"
-robot-agent-vision = "robot_agent.nodes.vision:main"
-robot-agent-cli = "robot_agent.nodes.cli:main"
-robot-agent-teleop = "robot_agent.nodes.teleop:main"
+peace-planner-executor = "peace.nodes.planner_executor:main"
+peace-vision = "peace.nodes.vision:main"
+peace-cli = "peace.nodes.cli:main"
+peace-teleop = "peace.nodes.teleop:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["robot_agent*"]
+include = ["peace*"]
 
 [tool.setuptools.package-data]
-robot_agent = ["*.yaml", "*.yml", "system_prompts/*.txt"]
+peace = ["*.yaml", "*.yml", "system_prompts/*.txt"]
 
 [tool.black]
 line-length = 100

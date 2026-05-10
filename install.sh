@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Quick setup script for Robot Agent inside Docker container
-# Run this inside your Robot SITL Docker container
+# Quick setup script for PEACE environment setup
 
 set -euo pipefail
 
@@ -16,19 +15,19 @@ log_warning() { echo -e "${YELLOW}[WARNING] $*${NC}"; }
 log_error()   { echo -e "${RED}[ERROR]   $*${NC}"; }
 
 echo "=================================="
-log_info "Robot Agent Docker Installation"
+log_info "PEACE Environment Setup"
 echo "=================================="
 echo ""
 
 # Get the directory where this script is located
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect if we're in the correct directory
+# Check the current working directory for pyproject.toml
 if [ ! -f "$WORK_DIR/pyproject.toml" ]; then
     log_error "pyproject.toml not found!"
-    log_error "Please run this script from the robot-agent directory"
+    log_error "Please run this script from the PEACE directory"
     echo ""
-    log_info "Expected location: /root/robot-agent or wherever the package is located"
+    log_info "Expected location: /root/peace or wherever the package is located"
     exit 1
 fi
 
@@ -62,42 +61,39 @@ uv sync
 
 # Install package
 echo ""
-log_info "[4/5] Installing robot-agent package..."
+log_info "[4/5] Installing peace package..."
 uv pip install -e .
 
-# Source ROS2 if available
+# Source ROS if available
 echo ""
-log_info "[5/5] Checking ROS2 environment..."
+log_info "[5/5] Checking ROS environment..."
 if [ -z "${ROS_DISTRO:-}" ]; then
-    log_warning "ROS_DISTRO environment variable not set. Skipping ROS2 sourcing."
+    log_warning "ROS_DISTRO environment variable not set. Skipping ROS sourcing."
 elif [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
-    # Temporarily disable -u for ROS2 setup
+    # Temporarily disable -u for ROS setup
     set +u
     # shellcheck source=/dev/null
     source "/opt/ros/$ROS_DISTRO/setup.bash"
     set -u
-    log_info "ROS2 $ROS_DISTRO sourced successfully"
+    log_info "ROS $ROS_DISTRO sourced successfully"
 else
-    log_warning "ROS2 not found at /opt/ros/$ROS_DISTRO"
+    log_warning "ROS not found at /opt/ros/$ROS_DISTRO"
 fi
 
 echo ""
 echo "=================================="
-log_info "Installation Complete!"
+log_info "Environment Setup Complete!"
 echo "=================================="
 echo ""
 log_info "Script finished. To activate the virtual environment in your shell, run:"
 echo "  source \"$WORK_DIR/.venv/bin/activate\""
 echo ""
-log_info "To launch the agent nodes (vision + agent):"
-echo "  ./launch_nodes.sh"
+log_info "To launch the vision node:"
+echo "  peace-vision"
 echo ""
-log_info "To interact with the agent (interactive mode):"
-echo "  ./launch_cli.sh"
+log_info "To launch the planner-executor node:"
+echo "  peace-planner-executor"
 echo ""
-log_info "To send a single query:"
-echo '  ./launch_cli.sh "What is the current altitude?"'
-echo ""
-log_info "For manual keyboard control:"
-echo "  ./launch_teleop.sh"
+log_info "To interact with the agent"
+echo '  peace-cli'
 echo ""

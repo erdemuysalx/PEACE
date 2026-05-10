@@ -1,8 +1,9 @@
-"""Data logging service — appends structured mission data to a CSV file.
+"""Mission logging service — appends structured mission data to a CSV file.
 
 A single fixed file (agent_log.csv) is appended across all launches. One row
 is written per mission at completion, capturing the query, plan, execution
-steps, final state, ego state, and world model observed at query-receive time.
+steps, final state, robot state at start and end, and world model observed
+at query-receive time.
 """
 
 import csv
@@ -11,21 +12,27 @@ import os
 import threading
 from typing import Optional
 
-from robot_agent.schemas import RobotState, WorldModel
+from peace.schemas import RobotState, WorldModel
 
-# CSV column order — fixed for easy pandas/numpy import
 _COLUMNS = [
     "mission_id",
+    "prompt_id",
     "query",
+    "task_category",
+    "world_model_json",
+    "robot_state_json",
+    "final_robot_state_json",
     "plan_reasoning",
     "steps_json",
     "final_state",
-    "ego_state_json",
-    "world_model_json",
+    "started_at",
+    "duration_s",
+    "replan_count",
+    "model",
 ]
 
 
-class DataLoggerService:
+class MissionLoggerService:
     """
     Thread-safe CSV logger for mission data collection.
 
@@ -63,6 +70,13 @@ class DataLoggerService:
         final_state: str,
         ego_state: Optional[RobotState],
         world_model: Optional[WorldModel],
+        prompt_id: str = "",
+        task_category: str = "",
+        final_ego_state: Optional[RobotState] = None,
+        started_at: float = 0.0,
+        duration_s: float = 0.0,
+        replan_count: int = 0,
+        model: str = "",
     ) -> None:
         """Log the complete outcome of a mission as a single row."""
         if not self._enabled or self._writer is None:
@@ -70,12 +84,19 @@ class DataLoggerService:
 
         row = {
             "mission_id": mission_id,
+            "prompt_id": prompt_id,
             "query": query,
+            "task_category": task_category,
+            "world_model_json": world_model.model_dump_json() if world_model else "",
+            "robot_state_json": ego_state.model_dump_json() if ego_state else "",
+            "final_robot_state_json": final_ego_state.model_dump_json() if final_ego_state else "",
             "plan_reasoning": plan_reasoning,
             "steps_json": json.dumps(executed_steps),
             "final_state": final_state,
-            "ego_state_json": ego_state.model_dump_json() if ego_state else "",
-            "world_model_json": world_model.model_dump_json() if world_model else "",
+            "started_at": f"{started_at:.6f}" if started_at else "",
+            "duration_s": f"{duration_s:.3f}" if duration_s else "",
+            "replan_count": replan_count,
+            "model": model,
         }
 
         with self._lock:

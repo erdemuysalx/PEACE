@@ -4,7 +4,7 @@ from typing import Any, Optional, Protocol, runtime_checkable
 
 from ollama import Client
 
-from robot_agent.exceptions import InferenceError
+from peace.exceptions import InferenceError
 
 
 @runtime_checkable
@@ -30,8 +30,7 @@ class LlmClient(Protocol):
 class OllamaClient:
     """Ollama-backed language model client.
 
-    Supports both local Ollama instances (no api_key) and Ollama cloud
-    (api_key passed as Authorization: Bearer header).
+    Supports both local Ollama instances and Ollama cloud.
     """
 
     def __init__(
@@ -87,7 +86,6 @@ class OllamaClient:
             messages: List of chat messages (role/content dicts).
             format: Optional JSON schema to constrain output format.
             num_predict_override: If set, replaces the default num_predict for this call only.
-                Useful for lightweight decision calls that need fewer tokens than full planning calls.
 
         Raises:
             InferenceError: If the Ollama API call fails.

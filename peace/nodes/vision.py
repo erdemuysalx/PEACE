@@ -1,4 +1,4 @@
-"""Vision node — thin ROS2 wrapper around ObjectDetector and DepthProjectionService."""
+"""Vision node — thin ROS 2 wrapper around ObjectDetector and DepthProjectionService."""
 
 import concurrent.futures
 import math
@@ -17,11 +17,11 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
 
-from robot_agent.backends.detector import ObjectDetector, VlmDetector, YoloDetector
-from robot_agent.core.config import get_settings
-from robot_agent.system_prompts import get_perception_prompt
-from robot_agent.schemas import SceneDescription, ObjectWithDepth
-from robot_agent.services.depth_service import DepthProjectionService
+from peace.backends.detector import ObjectDetector, VlmDetector, YoloDetector
+from peace.core.config import get_settings
+from peace.system_prompts import get_perception_prompt
+from peace.schemas import SceneDescription, ObjectWithDepth
+from peace.services.depth_service import DepthProjectionService
 
 # Default camera intrinsics — overridden from /camera/color/camera_info
 _DEFAULT_FX = 1397.2236

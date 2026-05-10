@@ -37,7 +37,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Header
 
-from robot_agent.core.config import get_settings
+from peace.core.config import get_settings
 
 # ── Tunable constants ─────────────────────────────────────────────────────────
 

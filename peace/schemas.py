@@ -1,8 +1,7 @@
 """
-Pydantic data models for Robot Agent inter-node communication.
+Pydantic data models for PEACE inter-node communication.
 
 All models are serialized to JSON via model_dump_json() / model_validate_json()
-(Pydantic v2 built-ins — no wrapper methods needed).
 """
 
 import time
@@ -22,7 +21,7 @@ class Object(BaseModel):
 
 
 class ObjectWithDepth(Object):
-    """Detected object enriched with depth and 3D world position."""
+    """Single detected object enriched with depth and 3D world position."""
 
     depth_meters: Optional[float] = Field(
         default=None, description="Distance to object in metres (None if invalid)"
@@ -35,7 +34,7 @@ class ObjectWithDepth(Object):
 
 
 class SceneDescription(BaseModel):
-    """Complete scene description with detected objects and 3D positions."""
+    """Complete scene description with all detected objects and 3D positions."""
 
     summary: str = Field(..., description="Concise scene description")
     objects: list[ObjectWithDepth] = Field(..., description="Detected objects with 3D positions")
@@ -47,7 +46,7 @@ class SceneDescription(BaseModel):
     )
 
 class WorldModel(BaseModel):
-    """World model — environment observations independent of vehicle type."""
+    """World model — environment observations."""
 
     detections: list[dict] = Field(
         default_factory=list, description="Detected objects with depth and world positions"
@@ -58,7 +57,7 @@ class WorldModel(BaseModel):
 
 
 class RobotState(BaseModel):
-    """Robot state — odometry, orientation, and flight/operational status."""
+    """Robot state — odometry, orientation, and operational status."""
 
     position_x: float = Field(default=0.0, description="Position X in local ENU frame (metres)")
     position_y: float = Field(default=0.0, description="Position Y in local ENU frame (metres)")
@@ -114,3 +113,7 @@ class ExecutionStatus(BaseModel):
         description="One of: idle, executing, paused, completed, aborted, failed",
     )
     reasoning: str = Field(default="", description="Planner reasoning for the current mission")
+    steps: list[str] = Field(
+        default_factory=list,
+        description="Human-readable summaries of every planned step (sent once when execution begins)",
+    )

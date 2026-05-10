@@ -1,5 +1,5 @@
 """
-Prompt templates for Robot Agent.
+Prompt templates for PEACE.
 
 System prompts are stored as .txt files under system_prompts/ and loaded at
 import time. Helper functions format live ego state and world model data into
@@ -8,7 +8,7 @@ context strings.
 
 from pathlib import Path
 
-from robot_agent.schemas import RobotState, WorldModel
+from peace.schemas import RobotState, WorldModel
 
 _PROMPTS_DIR = Path(__file__).parent
 

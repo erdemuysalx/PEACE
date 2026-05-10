@@ -1,11 +1,16 @@
-"""Safety validation service for positions and altitude limits."""
+"""Constraint enforcement service — validates positions and altitude limits.
 
-from robot_agent.exceptions import SafetyViolationError
+Currently enforces safety constraints (geofence, altitude bounds). Designed as
+the central entry point for additional constraint classes (mission, regulatory,
+operational) as PEACE evolves.
+"""
+
+from peace.exceptions import SafetyViolationError
 
 
-class SafetyValidatorService:
+class ConstraintEnforcementService:
     """
-    Validates and clamps positions against configurable safety limits.
+    Validates and clamps positions against configurable constraint limits.
 
     Raises SafetyViolationError for hard violations (position out of geofence).
     Provides clamp_altitude() for soft violations (altitude adjustments).
@@ -17,32 +22,23 @@ class SafetyValidatorService:
         max_altitude: float,
         horizontal_limit: float,
     ) -> None:
-        """Store altitude and horizontal geofence limits from settings."""
+        """Store altitude and horizontal geofence constraint bounds from settings."""
         self.min_altitude = min_altitude
         self.max_altitude = max_altitude
         self.horizontal_limit = horizontal_limit
 
     def validate_position(self, x: float, y: float, z: float) -> None:
         """
-        Raise SafetyViolationError if the position violates safety constraints.
+        Raise SafetyViolationError if (x, y) violates the horizontal geofence.
 
-        Altitude violations are surfaced as warnings (caller should call
-        clamp_altitude instead). Geofence violations are hard errors.
+        Altitude is treated as a soft constraint: callers must run the value
+        through clamp_altitude() before validate_position(), so the altitude
+        bounds are not re-checked here.
         """
         if abs(x) > self.horizontal_limit or abs(y) > self.horizontal_limit:
             raise SafetyViolationError(
                 f"Position ({x:.1f}, {y:.1f}) exceeds "
                 f"±{self.horizontal_limit}m geofence limit"
-            )
-
-        if z < self.min_altitude:
-            raise SafetyViolationError(
-                f"Altitude {z:.1f}m is below minimum {self.min_altitude}m"
-            )
-
-        if z > self.max_altitude:
-            raise SafetyViolationError(
-                f"Altitude {z:.1f}m exceeds maximum {self.max_altitude}m"
             )
 
     def clamp_altitude(self, z: float) -> float:

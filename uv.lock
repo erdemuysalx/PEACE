@@ -858,6 +858,48 @@ wheels = [
 ]
 
 [[package]]
+name = "peace"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "numpy" },
+    { name = "ollama" },
+    { name = "opencv-python" },
+    { name = "pillow" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "ultralytics" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "black" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
+    { name = "numpy", specifier = ">=1.24.0,<2" },
+    { name = "ollama", specifier = ">=0.6.0" },
+    { name = "opencv-python", specifier = ">=4.8.0" },
+    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.28.0" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "ultralytics", specifier = ">=8.0.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "pillow"
 version = "12.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1201,48 +1243,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/b3/c6/f3b320c27991c46f4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/14/25/b208c5683343959b670dc001595f2f3737e051da617f66c31f7c4fa93abc/rich-14.3.3-py3-none-any.whl", hash = "sha256:793431c1f8619afa7d3b52b2cdec859562b950ea0d4b6b505397612db8d5362d", size = 310458, upload-time = "2026-02-19T17:23:13.732Z" },
 ]
-
-[[package]]
-name = "robot-agent"
-version = "0.2.0"
-source = { editable = "." }
-dependencies = [
-    { name = "numpy" },
-    { name = "ollama" },
-    { name = "opencv-python" },
-    { name = "pillow" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "ultralytics" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "black" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
-    { name = "numpy", specifier = ">=1.24.0,<2" },
-    { name = "ollama", specifier = ">=0.6.0" },
-    { name = "opencv-python", specifier = ">=4.8.0" },
-    { name = "pillow", specifier = ">=10.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "requests", specifier = ">=2.28.0" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-    { name = "ultralytics", specifier = ">=8.0.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "ruff"

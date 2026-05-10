@@ -1,4 +1,4 @@
-"""Command-line interface for Robot Agent."""
+"""Command-line interface for PEACE."""
 
 import argparse
 import json
@@ -7,7 +7,7 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.rule import Rule
@@ -16,8 +16,8 @@ from rich.table import Table
 from rich.text import Text
 from std_msgs.msg import String
 
-import robot_agent
-from robot_agent.core.config import get_settings
+import peace
+from peace.core.config import get_settings
 
 _ACCENT = "#ffb86c"
 
@@ -42,9 +42,9 @@ _DRONE_ART = """\
 
 
 def _print_welcome(model: str) -> None:
-    """Print the Claude Code-style welcome panel."""
+    """Print the welcome panel."""
     left = Text()
-    left.append("\n  Welcome to Robot Agent!\n\n", style=f"bold {_ACCENT}")
+    left.append("\n  Welcome to PEACE!\n\n", style=f"bold {_ACCENT}")
     left.append(_DRONE_ART + "\n\n", style=_ACCENT)
     left.append(f"  {model}\n", style="dim")
     left.append("  ROS 2 / MAVROS\n", style="dim")
@@ -66,7 +66,7 @@ def _print_welcome(model: str) -> None:
         Panel(
             grid,
             border_style=_ACCENT,
-            title=f"[bold {_ACCENT}]Robot Agent v{robot_agent.__version__}[/bold {_ACCENT}]",
+            title=f"[bold {_ACCENT}]PEACE v{peace.__version__}[/bold {_ACCENT}]",
             title_align="left",
             padding=(0, 1),
         )
@@ -90,6 +90,10 @@ class AgentCLI(Node):
         self._current_step = "Planning..."
         self._terminal_state: str = ""
         self._terminal_message: str = ""
+        self._reasoning: str = ""
+        self._steps: list[str] = []
+        self._current_index: int = 0
+        self._total: int = 0
 
         # Brief pause so publishers register before first message
         time.sleep(0.5)
@@ -101,8 +105,13 @@ class AgentCLI(Node):
             state = status.get("state", "unknown")
             message = status.get("message", "")
             reasoning = status.get("reasoning", "")
+            steps = status.get("steps") or []
             if reasoning:
-                _console.print(f"[dim italic]  {reasoning}[/dim italic]")
+                self._reasoning = reasoning
+            if steps:
+                self._steps = steps
+                self._total = status.get("total_waypoints", len(steps)) or len(steps)
+            self._current_index = status.get("current_waypoint_index", self._current_index) or self._current_index
             self._current_step = message or state
             if state in _TERMINAL_STATES:
                 self._terminal_state = state
@@ -111,8 +120,14 @@ class AgentCLI(Node):
         except Exception as e:
             self.get_logger().debug(f"Failed to parse status: {e}")
 
-    def send_query(self, query: str) -> bool:
-        """Publish a query string to the agent and reset mission state. Returns False if empty."""
+    def send_query(
+        self, query: str, prompt_id: str = "", task_category: str = ""
+    ) -> bool:
+        """Publish a query to the agent and reset mission state.
+
+        When prompt_id or task_category are provided, the message is sent as a
+        JSON envelope so the planner-executor can tag the corresponding log row.
+        """
         if not query.strip():
             _console.print("[red]Query cannot be empty[/red]")
             return False
@@ -120,18 +135,55 @@ class AgentCLI(Node):
         self._terminal_state = ""
         self._terminal_message = ""
         self._current_step = "Planning..."
+        self._reasoning = ""
+        self._steps = []
+        self._current_index = 0
+        self._total = 0
         msg = String()
-        msg.data = query
+        if prompt_id or task_category:
+            msg.data = json.dumps(
+                {"query": query, "prompt_id": prompt_id, "task_category": task_category}
+            )
+        else:
+            msg.data = query
         self._query_pub.publish(msg)
         return True
+
+    def _render(self) -> Group:
+        """Build the persistent step-list renderable for the Live region."""
+        spinner = Spinner("dots")
+        items: list = []
+        if self._reasoning:
+            items.append(Text(f"  {self._reasoning}", style="dim italic"))
+        total = self._total or len(self._steps)
+        for i, summary in enumerate(self._steps, start=1):
+            label = f"Step {i}/{total}: {summary}"
+            if self._mission_done and self._terminal_state == "completed":
+                items.append(Text(f"  ✔ {label}", style="green"))
+            elif self._mission_done and i >= self._current_index and self._terminal_state in ("failed", "aborted"):
+                items.append(Text(f"  ✖ {label}", style="red"))
+            elif i < self._current_index:
+                items.append(Text(f"  ✔ {label}", style="green"))
+            elif i == self._current_index and not self._mission_done:
+                line = Table.grid(padding=(0, 1))
+                line.add_row(Text("  ", style=""), spinner, Text(label))
+                items.append(line)
+            else:
+                items.append(Text(f"  · {label}", style="dim"))
+        if not self._steps:
+            line = Table.grid(padding=(0, 1))
+            line.add_row(Text("  ", style=""), spinner, Text(self._current_step))
+            items.append(line)
+        return Group(*items)
 
     def wait_for_completion(self, timeout: float = 300.0) -> None:
         """Block until a terminal status is received or timeout expires."""
         deadline = time.time() + timeout
-        with Live(console=_console, refresh_per_second=10, transient=True) as live:
+        with Live(self._render(), console=_console, refresh_per_second=10, transient=False) as live:
             while not self._mission_done and time.time() < deadline:
-                live.update(Spinner("dots", text=f" {self._current_step}"))
+                live.update(self._render())
                 rclpy.spin_once(self, timeout_sec=0.1)
+            live.update(self._render())
 
         if not self._mission_done:
             _console.print("[yellow]No completion status received — returning to prompt[/yellow]")
@@ -143,13 +195,13 @@ class AgentCLI(Node):
 
 def main(args=None) -> None:
     """Entry point for interactive and single-query CLI modes."""
-    parser = argparse.ArgumentParser(description="Robot Agent CLI")
+    parser = argparse.ArgumentParser(description="PEACE CLI")
     parser.add_argument("--query", nargs="*", help="Query to send (omit for interactive mode)")
     parser.add_argument(
         "--monitor", action="store_true", help="Keep running to monitor execution status"
     )
 
-    # Separate CLI args from ROS2 args
+    # Separate CLI args from ROS 2 args
     cli_args: list[str] = []
     ros_args: list[str] = []
     in_ros = False

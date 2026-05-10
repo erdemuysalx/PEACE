@@ -9,8 +9,8 @@ import numpy as np
 from ollama import Client
 from pydantic import ValidationError
 
-from robot_agent.exceptions import InferenceError
-from robot_agent.schemas import Object
+from peace.exceptions import InferenceError
+from peace.schemas import Object
 
 
 @runtime_checkable
@@ -18,7 +18,7 @@ class ObjectDetector(Protocol):
     """Interface for all object detection backends."""
 
     def detect(self, image: np.ndarray) -> list[Object]:
-        """Run detection on a BGR image and return detected objects."""
+        """Run detection on a RGB image and return detected objects."""
         ...
 
     @property
@@ -33,7 +33,7 @@ class ObjectDetector(Protocol):
 
 
 class YoloDetector:
-    """YOLO detector backed by the Ultralytics library (YOLOv8/v9/v11).
+    """YOLO detector backed by the Ultralytics library.
 
     Model weights are auto-downloaded on first use when given a model name
     such as 'yolov8n.pt'. Alternatively pass a local path to a .pt file.
@@ -68,7 +68,7 @@ class YoloDetector:
         return self._error
 
     def detect(self, image: np.ndarray) -> list[Object]:
-        """Run YOLO inference on a BGR image and return detected objects."""
+        """Run YOLO inference on a RGB image and return detected objects."""
         if not self.is_ready:
             return []
 
@@ -131,7 +131,7 @@ class VlmDetector:
         return None
 
     def detect(self, image: np.ndarray) -> list[Object]:
-        """Send a BGR image to the VLM and return validated, filtered detections."""
+        """Send a RGB image to the VLM and return validated, filtered detections."""
         if not self.is_ready:
             return []
 

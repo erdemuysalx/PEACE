@@ -1,17 +1,17 @@
-"""Ego-vehicle state aggregation service — thread-safe odometry and status collection."""
+"""Robot state aggregation service — thread-safe odometry and operational status collection."""
 
 import math
 import threading
 from collections import deque
 
-from robot_agent.schemas import RobotState
+from peace.schemas import RobotState
 
 
 class RobotStateAggregatorService:
     """
-    Thread-safe aggregator for ego-vehicle state.
+    Thread-safe aggregator for robot state.
 
-    Nodes call update_odom() and update_flight_mode() from ROS2 callbacks.
+    Nodes call update_*() methods from ROS2 callbacks.
     The agent calls get_ego_state() to obtain a complete snapshot for LLM reasoning.
 
     A single _ego_state_lock covers the RobotState snapshot and the history deque.
@@ -83,12 +83,12 @@ class RobotStateAggregatorService:
     # ── Query methods (called from agent / LLM thread) ───────────────────────
 
     def get_ego_state(self) -> RobotState:
-        """Return a complete snapshot of the current ego-vehicle state."""
+        """Return a complete snapshot of the current robot state."""
         with self._ego_state_lock:
             return self._ego_state.model_copy()
 
     def get_ego_state_history(self, n: int) -> list[RobotState]:
-        """Return the last n odometry-stamped ego state snapshots, oldest first."""
+        """Return the last n odometry-stamped robot state snapshots, oldest first."""
         with self._ego_state_lock:
             history = list(self._history)
         return history[-n:] if n < len(history) else history

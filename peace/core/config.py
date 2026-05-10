@@ -1,31 +1,18 @@
 """
-Configuration settings for Robot Agent using pydantic-settings.
-
-This module handles all configuration management with clear separation between:
-- DEPLOYMENT config: Loaded from .env at project root (endpoints, models, topic names)
-- RUNTIME config: Defaults for node parameters (rates, thresholds, limits)
+Configuration settings for PEACE using pydantic-settings.
 """
 
 import requests
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class RobotAgentSettings(BaseSettings):
+class PeaceSettings(BaseSettings):
     """
-    Configuration settings for the Robot Agent.
-
-    DEPLOYMENT CONFIGS (from .env at project root):
-    - Loaded at startup from .env file
-    - Defines WHERE services run and WHICH models/topics to use
-
-    RUNTIME CONFIGS:
-    - Declared as fields with defaults
-    - Can be overridden via environment variables
+    Configuration settings (from .env at project root) for the PEACE.
     """
 
     model_config = SettingsConfigDict(
@@ -35,20 +22,12 @@ class RobotAgentSettings(BaseSettings):
         extra="forbid",
     )
 
-    # DEPLOYMENT CONFIGURATION (from .env)
+    # DEPLOYMENT CONFIGURATION
 
     # Agent Configuration
     agent_name: str = Field(
-        default="Robot Agent",
+        default="PEACE",
         description="Name of the agent",
-    )
-    agent_description: str = Field(
-        default="An intelligent agent for robot operations, capable of analyzing sensor data and providing flight recommendations.",
-        description="Description of the agent's purpose",
-    )
-    agent_accumulate_chat_history: bool = Field(
-        default=True,
-        description="Whether to accumulate chat history for context in conversations",
     )
     agent_max_replan_depth: int = Field(
         default=2,
@@ -63,7 +42,7 @@ class RobotAgentSettings(BaseSettings):
         description="Number of past world model snapshots to include in LLM prompt",
     )
 
-    # Ollama Configuration (Deployment)
+    # Ollama Configuration
     ollama_endpoint: str = Field(
         default="http://host.docker.internal:11434",
         description="Ollama API endpoint URL",
@@ -73,7 +52,7 @@ class RobotAgentSettings(BaseSettings):
         description="API key for Ollama cloud (leave empty for local instances)",
     )
 
-    # Vision Node Configuration (Deployment)
+    # Vision Node Configuration
     vision_model: str = Field(
         default="llava:13b",
         description="Ollama model to use for vision/scene interpretation",
@@ -91,7 +70,7 @@ class RobotAgentSettings(BaseSettings):
         description="Timeout for vision model API calls (seconds)",
     )
 
-    # YOLO Configuration (Alternative to VLM)
+    # YOLO Configuration
     use_yolo: bool = Field(
         default=False,
         description="Use YOLO object detection instead of VLM (faster, more accurate bboxes)",
@@ -109,7 +88,7 @@ class RobotAgentSettings(BaseSettings):
         description="Minimum confidence threshold for YOLO detections (0.0-1.0)",
     )
 
-    # Language Node Configuration (Deployment)
+    # Language Node Configuration
     language_model: str = Field(
         default="qwen2.5:14b",
         description="Ollama model to use for language/reasoning",
@@ -127,13 +106,13 @@ class RobotAgentSettings(BaseSettings):
         description="Timeout for language model API calls (seconds)",
     )
 
-    # ROS2 Node Configuration (Deployment)
+    # ROS2 Node Configuration
     node_namespace: str = Field(
-        default="robot_agent",
+        default="peace",
         description="ROS2 namespace for the agent's nodes",
     )
 
-    # Topic Configuration (Deployment)
+    # Topic Configuration
     topic_namespace: str = Field(
         default="/mavros",
         description="MAVROS topic namespace",
@@ -280,6 +259,6 @@ class RobotAgentSettings(BaseSettings):
 
 
 @lru_cache(maxsize=None)
-def get_settings() -> RobotAgentSettings:
+def get_settings() -> PeaceSettings:
     """Return the singleton settings instance, creating it on first call."""
-    return RobotAgentSettings()
+    return PeaceSettings()

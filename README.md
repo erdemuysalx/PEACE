@@ -1,11 +1,11 @@
-# Robot Agent
+# PEACE: Planner-Executor Agent with Constraint Enforcement
 
 A multi-modal AI agent that integrates robotics platforms with LLM-based mission planning and visual perception for natural-language-driven robot control. It uses ROS 2 as the communication gateway between the AI layer and firmware.
 
 ## Features
 
 - Natural language mission planning via Ollama (local or cloud)
-- Deterministic planner-executor pattern: LLM plans once, `DroneTools` executes without re-inference
+- Deterministic planner-executor pattern: LLM plans once, `UAVTools` executes without re-inference
 - Pluggable object detection: YOLO (ultralytics) or VLM (Ollama vision model)
 - 3D depth projection of detected objects from 2D bounding boxes
 - Automatic replanning on step failure (configurable max depth)
@@ -34,7 +34,7 @@ For native (non-Docker) usage:
 
 ```bash
 git clone <repo-url>
-cd robot-agent
+cd peace
 ```
 
 ### 2. Start the SITL container
@@ -43,20 +43,20 @@ cd robot-agent
 docker compose up -d
 ```
 
-This builds the image (ROS 2 Jazzy + Gazebo Harmonic + MAVROS + NoVNC) and mounts the project into `/root/robot_agent` inside the container. The NoVNC interface is available at `http://localhost:6080`.
+This builds the image (ROS 2 Jazzy + Gazebo Harmonic + MAVROS + NoVNC) and mounts the project into `/root/peace` inside the container. The NoVNC interface is available at `http://localhost:6080`.
 
 ### 3. Install inside the container
 
 ```bash
 docker exec -it px4_sitl bash
-cd /root/robot-agent
+cd /root/peace
 ./install.sh
 source .venv/bin/activate
 ```
 
 ### 4. Configure
 
-Edit `robot_agent/.env`:
+Edit `peace/.env`:
 
 ```bash
 # Ollama
@@ -110,8 +110,8 @@ ros2 run mavros mavros_node --ros-args -p fcu_url:=udp://:14540@14557
 ### Launch agent nodes
 
 ```bash
-robot-agent-vision
-robot-agent-planner-executor
+peace-vision
+peace-planner-executor
 ```
 
 Starts the **Vision Node** and **Planner-Executor Node** in the background. Ctrl+C stops both cleanly.
@@ -119,7 +119,7 @@ Starts the **Vision Node** and **Planner-Executor Node** in the background. Ctrl
 ### Send queries (interactive)
 
 ```bash
-robot-agent-cli
+peace-cli
 ```
 
 Opens an interactive prompt. Type natural language mission queries:
@@ -134,7 +134,7 @@ Opens an interactive prompt. Type natural language mission queries:
 ### Single query
 
 ```bash
-robot-agent-cli "takeoff to 10 meters and hold position"
+peace-cli "takeoff to 10 meters and hold position"
 ```
 
 Add `--monitor` to keep the terminal open and watch execution status after the query is sent.

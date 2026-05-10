@@ -1,5 +1,5 @@
 """
-Robot Agent — agentic control architecture for robotic platforms, built on ROS2 and leveraging large models for decision-making.
+PEACE — agentic control architecture for robotic platforms, built on ROS2 and leveraging large models for decision-making.
 """
 
 __version__ = "0.2.0"
@@ -22,12 +22,12 @@ __all__ = [
     "WorldModelAggregatorService",
     # Configuration
     "get_settings",
-    "RobotAgentSettings",
+    "PeaceSettings",
     # Exceptions
-    "RobotAgentError",
+    "PeaceError",
     "SafetyViolationError",
     "InferenceError",
-    "VehicleError",
+    "RobotError",
     "ConfigurationError",
 ]
 
@@ -35,34 +35,34 @@ __all__ = [
 def __getattr__(name: str):
     """Lazily import and return public symbols to avoid heavy top-level imports."""
     if name == "VisionNode":
-        from robot_agent.nodes.vision import VisionNode
+        from peace.nodes.vision import VisionNode
         return VisionNode
     if name == "AgentNode":
-        from robot_agent.nodes.planner_executor import AgentNode
+        from peace.nodes.planner_executor import AgentNode
         return AgentNode
 
     if name in {"Object", "ObjectWithDepth", "SceneDescription", "RobotState", "WorldModel",
                 "ToolCall", "MissionPlan", "ExecutionStatus"}:
-        import robot_agent.schemas as _s
+        import peace.schemas as _s
         return getattr(_s, name)
 
     if name == "RobotStateAggregatorService":
-        from robot_agent.services.robot_state_service import RobotStateAggregatorService
+        from peace.services.robot_state_service import RobotStateAggregatorService
         return RobotStateAggregatorService
     if name == "WorldModelAggregatorService":
-        from robot_agent.services.world_model_service import WorldModelAggregatorService
+        from peace.services.world_model_service import WorldModelAggregatorService
         return WorldModelAggregatorService
 
     if name == "get_settings":
-        from robot_agent.core.config import get_settings
+        from peace.core.config import get_settings
         return get_settings
-    if name == "RobotAgentSettings":
-        from robot_agent.core.config import RobotAgentSettings
-        return RobotAgentSettings
+    if name == "PeaceSettings":
+        from peace.core.config import PeaceSettings
+        return PeaceSettings
 
-    if name in {"RobotAgentError", "SafetyViolationError", "InferenceError",
-                "VehicleError", "ConfigurationError"}:
-        import robot_agent.exceptions as _e
+    if name in {"PeaceError", "SafetyViolationError", "InferenceError",
+                "RobotError", "ConfigurationError"}:
+        import peace.exceptions as _e
         return getattr(_e, name)
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

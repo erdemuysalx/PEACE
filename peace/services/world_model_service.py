@@ -6,7 +6,7 @@ from collections import deque
 
 import numpy as np
 
-from robot_agent.schemas import WorldModel
+from peace.schemas import WorldModel
 
 
 class WorldModelAggregatorService:
@@ -16,8 +16,7 @@ class WorldModelAggregatorService:
     Nodes call the update_*() methods from ROS2 callbacks.
     The agent calls get_world_model() to obtain a complete snapshot for LLM reasoning.
 
-    A single _world_model_lock covers the WorldModel (including detections and lidar_ranges)
-    and the history deque.
+    A single _world_model_lock covers the WorldModel snapshot and the history deque.
     """
 
     # Sector definitions: name → (angle_min_deg, angle_max_deg)
