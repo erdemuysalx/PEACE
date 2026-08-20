@@ -151,3 +151,19 @@ python -m evaluation.run_dataset --limit 5
 ```
 
 This script is not the canonical way to use PEACE — it is a worked example of how to publish queries onto `/agent/query` programmatically. Each row's `id` and `category` ride along inside the agent's opaque `metadata` field, end up serialised in the CSV's `metadata_json` column, and can be joined back to the dataset for scoring.
+
+## Citation
+
+If you use PEACE in your research, please cite our paper ([arXiv:2606.00104](https://arxiv.org/abs/2606.00104)):
+
+```bibtex
+@misc{uysal2026peaceplannerexecutoragentconstraint,
+      title={PEACE: A Planner-Executor Agent with Constraint Enforcement for UAVs},
+      author={Erdem Uysal and Timo Kehrer and Sebastiano Panichella},
+      year={2026},
+      eprint={2606.00104},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2606.00104},
+}
+```
